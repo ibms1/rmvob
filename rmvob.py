@@ -9,26 +9,35 @@ except ImportError:
     st.error("يرجى تثبيت opencv-python-headless بدلاً من opencv-python")
     st.stop()
 
-def video_to_frames(video_bytes):
+def read_video_frames(video_bytes):
     """تحويل الفيديو إلى إطارات من البيانات الثنائية"""
-    # تحويل البيانات الثنائية إلى مصفوفة NumPy
-    video_np = np.frombuffer(video_bytes, np.uint8)
-    
-    # قراءة الفيديو من الذاكرة
-    cap = cv2.VideoCapture()
-    cap.open(cv2.CAP_OPENCV_MJPEG)
-    cap.write(video_np)
-    
-    frames = []
+    # كتابة البيانات إلى ملف مؤقت
+    temp_path = "temp_input.mp4"
     try:
+        with open(temp_path, "wb") as f:
+            f.write(video_bytes)
+        
+        # قراءة الفيديو
+        cap = cv2.VideoCapture(temp_path)
+        frames = []
+        
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
             frames.append(frame)
-    finally:
+        
         cap.release()
-    return frames
+        return frames
+    
+    except Exception as e:
+        st.error(f"خطأ في قراءة الفيديو: {str(e)}")
+        return []
+    
+    finally:
+        # تنظيف الملف المؤقت
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 def process_frame(frame):
     """معالجة الإطارات - مثال: تحويل إلى تدرج رمادي"""
@@ -39,39 +48,37 @@ def process_frame(frame):
         st.error(f"خطأ في معالجة الإطار: {str(e)}")
         return None
 
-def frames_to_video(frames, fps=30):
-    """تحويل الإطارات إلى فيديو في الذاكرة"""
+def create_video_from_frames(frames, fps=30):
+    """تحويل الإطارات إلى فيديو"""
     if not frames:
         return None
     
+    temp_output = "temp_output.mp4"
     try:
         height, width = frames[0].shape
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(temp_output, fourcc, fps, (width, height), isColor=False)
         
-        # إنشاء buffer في الذاكرة
-        output_buffer = BytesIO()
-        
-        # إنشاء VideoWriter يكتب إلى الذاكرة
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
-        out = cv2.VideoWriter('temp.mp4', fourcc, fps, (width, height), isColor=False)
-        
-        # كتابة الإطارات
         for frame in frames:
             if frame is not None:
                 out.write(frame)
         
         out.release()
         
-        # قراءة البيانات من الملف المؤقت
-        with open('temp.mp4', 'rb') as f:
+        # قراءة الفيديو كبيانات ثنائية
+        with open(temp_output, 'rb') as f:
             video_bytes = f.read()
         
-        # حذف الملف المؤقت
-        os.remove('temp.mp4')
-        
         return video_bytes
+    
     except Exception as e:
-        st.error(f"خطأ في تحويل الإطارات إلى فيديو: {str(e)}")
+        st.error(f"خطأ في إنشاء الفيديو: {str(e)}")
         return None
+    
+    finally:
+        # تنظيف الملف المؤقت
+        if os.path.exists(temp_output):
+            os.remove(temp_output)
 
 def main():
     st.title("معالجة الفيديو")
@@ -84,11 +91,11 @@ def main():
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # قراءة بيانات الفيديو المرفوع
+            # قراءة بيانات الفيديو
             video_bytes = uploaded_file.read()
             
             status_text.text("جاري تحويل الفيديو إلى إطارات...")
-            frames = video_to_frames(video_bytes)
+            frames = read_video_frames(video_bytes)
             progress_bar.progress(0.3)
             
             if not frames:
@@ -109,7 +116,7 @@ def main():
             
             # تحويل الإطارات إلى فيديو
             status_text.text("جاري إنشاء الفيديو النهائي...")
-            output_video_bytes = frames_to_video(processed_frames)
+            output_video_bytes = create_video_from_frames(processed_frames)
             
             if output_video_bytes:
                 progress_bar.progress(1.0)
