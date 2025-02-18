@@ -1,8 +1,8 @@
-# app.py
 import streamlit as st
 import numpy as np
 import os
 from io import BytesIO
+
 try:
     import cv2
 except ImportError:
@@ -39,7 +39,7 @@ def frames_to_video(frames, output_path, fps=30):
     
     try:
         height, width = frames[0].shape
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')  # Using H.264 codec instead of mp4v
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=False)
         
         for frame in frames:
@@ -52,37 +52,33 @@ def frames_to_video(frames, output_path, fps=30):
         st.error(f"خطأ في تحويل الإطارات إلى فيديو: {str(e)}")
         return False
 
-def delete_temp_files(*file_paths):
-    """حذف الملفات المؤقتة"""
-    for file_path in file_paths:
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except Exception as e:
-            st.warning(f"تعذر حذف الملف المؤقت {file_path}: {str(e)}")
-
 def main():
     st.title("معالجة الفيديو")
     
     uploaded_file = st.file_uploader("رفع فيديو (أقصى مدة 30 ثانية)", type=["mp4"])
     
     if uploaded_file is not None:
+        # تهيئة المتغيرات للملفات المؤقتة
+        temp_video_path = "temp_video.mp4"
+        output_video_path = "output_video.mp4"
+        
         try:
             # عرض شريط التقدم
             progress_bar = st.progress(0)
             status_text = st.empty()
             
             # حفظ الفيديو المؤقت
-            temp_video_path = "temp_video.mp4"
             with open(temp_video_path, "wb") as f:
                 f.write(uploaded_file.read())
             
             status_text.text("جاري تحويل الفيديو إلى إطارات...")
             frames = video_to_frames(temp_video_path)
-            progress_bar.progress(33)
+            progress_bar.progress(0.3)  # تحديث القيمة إلى 0.3 بدلاً من 33
             
             if not frames:
                 st.error("لم يتم العثور على إطارات في الفيديو")
+                if os.path.exists(temp_video_path):
+                    os.remove(temp_video_path)
                 return
                 
             # معالجة الإطارات
@@ -94,38 +90,45 @@ def main():
                 processed_frame = process_frame(frame)
                 if processed_frame is not None:
                     processed_frames.append(processed_frame)
-                progress_bar.progress(33 + (i / total_frames * 33))
+                # تحديث شريط التقدم بنسبة مئوية
+                progress = 0.3 + (i / total_frames * 0.4)  # من 0.3 إلى 0.7
+                progress_bar.progress(progress)
             
             # تحويل الإطارات إلى فيديو
             status_text.text("جاري إنشاء الفيديو النهائي...")
-            output_video_path = "output_video.mp4"
             
             if frames_to_video(processed_frames, output_video_path):
-                progress_bar.progress(100)
+                progress_bar.progress(1.0)  # اكتمال التقدم
                 status_text.text("تم معالجة الفيديو بنجاح!")
                 
-                # عرض الفيديو الناتج
-                video_file = open(output_video_path, 'rb')
-                video_bytes = video_file.read()
-                video_file.close()
-                
-                st.video(video_bytes)
-                
-                # زر التحميل
-                st.download_button(
-                    label="تحميل الفيديو الناتج",
-                    data=video_bytes,
-                    file_name="output_video.mp4",
-                    mime="video/mp4"
-                )
-            
-            # حذف الملفات المؤقتة
-            delete_temp_files(temp_video_path, output_video_path)
+                try:
+                    # عرض الفيديو الناتج
+                    with open(output_video_path, 'rb') as video_file:
+                        video_bytes = video_file.read()
+                    
+                    st.video(video_bytes)
+                    
+                    # زر التحميل
+                    st.download_button(
+                        label="تحميل الفيديو الناتج",
+                        data=video_bytes,
+                        file_name="output_video.mp4",
+                        mime="video/mp4"
+                    )
+                except Exception as e:
+                    st.error(f"خطأ في عرض الفيديو: {str(e)}")
             
         except Exception as e:
             st.error(f"حدث خطأ: {str(e)}")
-            # حذف الملفات المؤقتة في حالة حدوث خطأ
-            delete_temp_files(temp_video_path, output_video_path)
+        
+        finally:
+            # تنظيف الملفات المؤقتة في كل الحالات
+            for file_path in [temp_video_path, output_video_path]:
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                    except Exception as e:
+                        st.warning(f"تعذر حذف الملف المؤقت {file_path}: {str(e)}")
 
 if __name__ == "__main__":
     main()
