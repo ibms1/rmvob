@@ -1,20 +1,17 @@
 import streamlit as st
 import cv2
 import numpy as np
-from ultralytics import YOLO
-import tempfile
+from moviepy.editor import VideoFileClip
 import os
-import time
+from io import BytesIO
 
-# عنوان التطبيق
-st.title("تطبيق إزالة الأشياء من الفيديو")
-
-# تحميل النموذج
-@st.cache_resource
-def load_model():
-    return YOLO('yolov8n.pt')
-
-yolo_model = load_model()
+# تحقق من طول الفيديو
+def check_video_duration(video_path):
+    clip = VideoFileClip(video_path)
+    duration = clip.duration
+    if duration > 30:  # إذا كان الفيديو أطول من 30 ثانية
+        return False
+    return True
 
 # تحويل الفيديو إلى إطارات
 def video_to_frames(video_path):
@@ -28,71 +25,69 @@ def video_to_frames(video_path):
     cap.release()
     return frames
 
-# إنشاء قناع (Mask) للأشياء المراد إزالتها
-def generate_mask(frame, results):
-    mask = np.zeros_like(frame[:, :, 0])
-    for result in results:
-        for box in result.boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
-    return mask
-
-# التعبئة (Inpainting) باستخدام OpenCV
-def inpaint_frame(frame, mask):
-    return cv2.inpaint(frame, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
+# معالجة الإطارات (هنا يمكنك استبدال هذا الجزء بنموذج الإزالة الفعلي)
+def process_frame(frame):
+    # مثال: تحويل الإطار إلى تدرج رمادي (يمكن استبدال هذا بالمعالجة الفعلية)
+    processed_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return processed_frame
 
 # تحويل الإطارات إلى فيديو
-def frames_to_video(frames, output_path, fps):
+def frames_to_video(frames, output_path, fps=30):
+    height, width = frames[0].shape
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    frame_height, frame_width, _ = frames[0].shape
-    out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=False)
     for frame in frames:
         out.write(frame)
     out.release()
 
-# معالجة الفيديو
-def process_video(video_path, output_path):
-    frames = video_to_frames(video_path)
-    processed_frames = []
-    for frame in frames:
-        results = yolo_model(frame)
-        mask = generate_mask(frame, results)
-        inpainted_frame = inpaint_frame(frame, mask)
-        processed_frames.append(inpainted_frame)
-    frames_to_video(processed_frames, output_path, 30)
+# حذف الملفات المؤقتة
+def delete_temp_files(*file_paths):
+    for file_path in file_paths:
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
-# واجهة المستخدم
-uploaded_file = st.file_uploader("قم بتحميل فيديو", type=["mp4", "mov", "avi"])
-if uploaded_file:
+# واجهة Streamlit
+st.title("إزالة الأشياء من الفيديو")
+uploaded_file = st.file_uploader("رفع فيديو (أقصى مدة 30 ثانية)", type=["mp4", "avi"])
+
+if uploaded_file is not None:
     # حفظ الفيديو المؤقت
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
-        tmp_file.write(uploaded_file.read())
-        video_path = tmp_file.name
+    temp_video_path = "temp_video.mp4"
+    with open(temp_video_path, "wb") as f:
+        f.write(uploaded_file.read())
 
-    # عرض الفيديو الأصلي
-    st.video(video_path)
+    # التحقق من طول الفيديو
+    if not check_video_duration(temp_video_path):
+        st.error("الفيديو يجب ألا يتجاوز 30 ثانية!")
+        delete_temp_files(temp_video_path)  # حذف الفيديو المؤقت
+    else:
+        st.success("الفيديو مقبول!")
 
-    # معالجة الفيديو
-    if st.button("إزالة الأشياء"):
-        with st.spinner("جاري المعالجة..."):
-            output_path = "output_video.mp4"
-            process_video(video_path, output_path)
-            if os.path.exists(output_path):
-                st.success("تمت المعالجة بنجاح!")
-                time.sleep(5)  # انتظر 5 ثوانٍ قبل التحميل
-                st.video(output_path)
-                
-                # زر تحميل الفيديو
-                with open(output_path, "rb") as file:
-                    btn = st.download_button(
-                        label="تحميل الفيديو",
-                        data=file,
-                        file_name="output_video.mp4",
-                        mime="video/mp4"
-                    )
-                os.remove(output_path)  # حذف الفيديو المعالج بعد التحميل
-            else:
-                st.error("حدث خطأ أثناء إنشاء الفيديو.")
+        # تحويل الفيديو إلى إطارات
+        frames = video_to_frames(temp_video_path)
 
-    # حذف الفيديو المؤقت
-    os.remove(video_path)
+        # معالجة الإطارات
+        processed_frames = []
+        for frame in frames:
+            processed_frame = process_frame(frame)
+            processed_frames.append(processed_frame)
+
+        # تحويل الإطارات إلى فيديو
+        output_video_path = "output_video.mp4"
+        frames_to_video(processed_frames, output_video_path)
+
+        # عرض الفيديو الناتج
+        st.video(output_video_path)
+
+        # تحميل الفيديو الناتج
+        with open(output_video_path, "rb") as f:
+            video_bytes = f.read()
+        st.download_button(
+            label="تحميل الفيديو الناتج",
+            data=video_bytes,
+            file_name="output_video.mp4",
+            mime="video/mp4"
+        )
+
+        # حذف الملفات المؤقتة بعد الانتهاء
+        delete_temp_files(temp_video_path, output_video_path)

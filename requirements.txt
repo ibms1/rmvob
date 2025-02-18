@@ -1,7 +1,7 @@
-ultralytics
-opencv-python-headless
-diffusers
+streamlit
+moviepy
+opencv-python
+numpy
 torch
 torchvision
-ffmpeg-python
-streamlit
+imageio
