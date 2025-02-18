@@ -9,9 +9,16 @@ except ImportError:
     st.error("يرجى تثبيت opencv-python-headless بدلاً من opencv-python")
     st.stop()
 
-def video_to_frames(video_path):
-    """تحويل الفيديو إلى إطارات"""
-    cap = cv2.VideoCapture(video_path)
+def video_to_frames(video_bytes):
+    """تحويل الفيديو إلى إطارات من البيانات الثنائية"""
+    # تحويل البيانات الثنائية إلى مصفوفة NumPy
+    video_np = np.frombuffer(video_bytes, np.uint8)
+    
+    # قراءة الفيديو من الذاكرة
+    cap = cv2.VideoCapture()
+    cap.open(cv2.CAP_OPENCV_MJPEG)
+    cap.write(video_np)
+    
     frames = []
     try:
         while cap.isOpened():
@@ -32,25 +39,39 @@ def process_frame(frame):
         st.error(f"خطأ في معالجة الإطار: {str(e)}")
         return None
 
-def frames_to_video(frames, output_path, fps=30):
-    """تحويل الإطارات إلى فيديو"""
+def frames_to_video(frames, fps=30):
+    """تحويل الإطارات إلى فيديو في الذاكرة"""
     if not frames:
-        return False
+        return None
     
     try:
         height, width = frames[0].shape
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=False)
         
+        # إنشاء buffer في الذاكرة
+        output_buffer = BytesIO()
+        
+        # إنشاء VideoWriter يكتب إلى الذاكرة
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
+        out = cv2.VideoWriter('temp.mp4', fourcc, fps, (width, height), isColor=False)
+        
+        # كتابة الإطارات
         for frame in frames:
             if frame is not None:
                 out.write(frame)
         
         out.release()
-        return True
+        
+        # قراءة البيانات من الملف المؤقت
+        with open('temp.mp4', 'rb') as f:
+            video_bytes = f.read()
+        
+        # حذف الملف المؤقت
+        os.remove('temp.mp4')
+        
+        return video_bytes
     except Exception as e:
         st.error(f"خطأ في تحويل الإطارات إلى فيديو: {str(e)}")
-        return False
+        return None
 
 def main():
     st.title("معالجة الفيديو")
@@ -58,22 +79,16 @@ def main():
     uploaded_file = st.file_uploader("رفع فيديو (أقصى مدة 30 ثانية)", type=["mp4"])
     
     if uploaded_file is not None:
-        # تهيئة المتغيرات للملفات المؤقتة
-        temp_video_path = "temp_video.mp4"
-        output_video_path = "output_video.mp4"
-        video_bytes = None  # متغير لتخزين بيانات الفيديو
-        
         try:
             # عرض شريط التقدم
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # حفظ الفيديو المؤقت
-            with open(temp_video_path, "wb") as f:
-                f.write(uploaded_file.read())
+            # قراءة بيانات الفيديو المرفوع
+            video_bytes = uploaded_file.read()
             
             status_text.text("جاري تحويل الفيديو إلى إطارات...")
-            frames = video_to_frames(temp_video_path)
+            frames = video_to_frames(video_bytes)
             progress_bar.progress(0.3)
             
             if not frames:
@@ -94,43 +109,25 @@ def main():
             
             # تحويل الإطارات إلى فيديو
             status_text.text("جاري إنشاء الفيديو النهائي...")
+            output_video_bytes = frames_to_video(processed_frames)
             
-            if frames_to_video(processed_frames, output_video_path):
-                progress_bar.progress(0.9)
-                status_text.text("جاري تحضير الفيديو للعرض...")
+            if output_video_bytes:
+                progress_bar.progress(1.0)
+                status_text.text("تم معالجة الفيديو بنجاح!")
                 
-                # قراءة الفيديو في الذاكرة قبل حذف الملف
-                try:
-                    with open(output_video_path, 'rb') as video_file:
-                        video_bytes = video_file.read()
-                    
-                    progress_bar.progress(1.0)
-                    status_text.text("تم معالجة الفيديو بنجاح!")
-                    
-                    # عرض الفيديو من الذاكرة
-                    st.video(video_bytes)
-                    
-                    # زر التحميل
-                    st.download_button(
-                        label="تحميل الفيديو الناتج",
-                        data=video_bytes,
-                        file_name="processed_video.mp4",
-                        mime="video/mp4"
-                    )
-                except Exception as e:
-                    st.error(f"خطأ في تحضير الفيديو: {str(e)}")
+                # عرض الفيديو
+                st.video(output_video_bytes)
+                
+                # زر التحميل
+                st.download_button(
+                    label="تحميل الفيديو الناتج",
+                    data=output_video_bytes,
+                    file_name="processed_video.mp4",
+                    mime="video/mp4"
+                )
             
         except Exception as e:
             st.error(f"حدث خطأ: {str(e)}")
-        
-        finally:
-            # تنظيف الملفات المؤقتة بعد التأكد من قراءة الفيديو
-            for file_path in [temp_video_path, output_video_path]:
-                if os.path.exists(file_path):
-                    try:
-                        os.remove(file_path)
-                    except Exception as e:
-                        st.warning(f"تعذر حذف الملف المؤقت {file_path}: {str(e)}")
 
 if __name__ == "__main__":
     main()
