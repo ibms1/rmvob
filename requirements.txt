@@ -1,7 +1,4 @@
-streamlit
-moviepy
-opencv-python-headless
-numpy
-torch
-torchvision
-imageio
+streamlit==1.31.0
+opencv-python==4.8.1
+numpy==1.24.3
+moviepy==1.0.3

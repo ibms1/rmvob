@@ -1,78 +1,129 @@
 import streamlit as st
 import cv2
 import numpy as np
-from moviepy.editor import VideoFileClip
 import os
 from io import BytesIO
 
-# تحويل الفيديو إلى إطارات
 def video_to_frames(video_path):
+    """تحويل الفيديو إلى إطارات"""
     cap = cv2.VideoCapture(video_path)
     frames = []
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frames.append(frame)
-    cap.release()
+    try:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frames.append(frame)
+    finally:
+        cap.release()
     return frames
 
-# معالجة الإطارات
 def process_frame(frame):
-    # مثال: تحويل الإطار إلى تدرج رمادي
-    processed_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    return processed_frame
+    """معالجة الإطارات - مثال: تحويل إلى تدرج رمادي"""
+    try:
+        processed_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        return processed_frame
+    except Exception as e:
+        st.error(f"خطأ في معالجة الإطار: {str(e)}")
+        return None
 
-# تحويل الإطارات إلى فيديو
 def frames_to_video(frames, output_path, fps=30):
-    height, width = frames[0].shape
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=False)
-    for frame in frames:
-        out.write(frame)
-    out.release()
+    """تحويل الإطارات إلى فيديو"""
+    if not frames:
+        return False
+    
+    try:
+        height, width = frames[0].shape
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=False)
+        
+        for frame in frames:
+            if frame is not None:
+                out.write(frame)
+        
+        out.release()
+        return True
+    except Exception as e:
+        st.error(f"خطأ في تحويل الإطارات إلى فيديو: {str(e)}")
+        return False
 
-# حذف الملفات المؤقتة
 def delete_temp_files(*file_paths):
+    """حذف الملفات المؤقتة"""
     for file_path in file_paths:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            st.warning(f"تعذر حذف الملف المؤقت {file_path}: {str(e)}")
 
-# واجهة Streamlit
-st.title("إزالة الأشياء من الفيديو")
-uploaded_file = st.file_uploader("رفع فيديو (أقصى مدة 30 ثانية)", type=["mp4", "avi"])
+def main():
+    st.title("معالجة الفيديو")
+    
+    # إضافة CSS لتحسين المظهر
+    st.markdown("""
+        <style>
+        .stButton>button {
+            width: 100%;
+            margin-top: 10px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    uploaded_file = st.file_uploader("رفع فيديو (أقصى مدة 30 ثانية)", type=["mp4", "avi"])
+    
+    if uploaded_file is not None:
+        try:
+            # عرض شريط التقدم
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # حفظ الفيديو المؤقت
+            temp_video_path = "temp_video.mp4"
+            with open(temp_video_path, "wb") as f:
+                f.write(uploaded_file.read())
+            
+            status_text.text("جاري تحويل الفيديو إلى إطارات...")
+            frames = video_to_frames(temp_video_path)
+            progress_bar.progress(33)
+            
+            # معالجة الإطارات
+            status_text.text("جاري معالجة الإطارات...")
+            processed_frames = []
+            total_frames = len(frames)
+            
+            for i, frame in enumerate(frames):
+                processed_frame = process_frame(frame)
+                if processed_frame is not None:
+                    processed_frames.append(processed_frame)
+                progress_bar.progress(33 + (i / total_frames * 33))
+            
+            # تحويل الإطارات إلى فيديو
+            status_text.text("جاري إنشاء الفيديو النهائي...")
+            output_video_path = "output_video.mp4"
+            if frames_to_video(processed_frames, output_video_path):
+                progress_bar.progress(100)
+                status_text.text("تم معالجة الفيديو بنجاح!")
+                
+                # عرض الفيديو الناتج
+                st.video(output_video_path)
+                
+                # زر التحميل
+                with open(output_video_path, "rb") as f:
+                    video_bytes = f.read()
+                st.download_button(
+                    label="تحميل الفيديو الناتج",
+                    data=video_bytes,
+                    file_name="output_video.mp4",
+                    mime="video/mp4"
+                )
+            
+            # حذف الملفات المؤقتة
+            delete_temp_files(temp_video_path, output_video_path)
+            
+        except Exception as e:
+            st.error(f"حدث خطأ: {str(e)}")
+            # حذف الملفات المؤقتة في حالة حدوث خطأ
+            delete_temp_files(temp_video_path, output_video_path)
 
-if uploaded_file is not None:
-    # حفظ الفيديو المؤقت
-    temp_video_path = "temp_video.mp4"
-    with open(temp_video_path, "wb") as f:
-        f.write(uploaded_file.read())
-
-    # تحويل الفيديو إلى إطارات
-    frames = video_to_frames(temp_video_path)
-
-    # معالجة الإطارات
-    processed_frames = []
-    for frame in frames:
-        processed_frame = process_frame(frame)
-        processed_frames.append(processed_frame)
-
-    # تحويل الإطارات إلى فيديو
-    output_video_path = "output_video.mp4"
-    frames_to_video(processed_frames, output_video_path)
-
-    # عرض الفيديو الناتج
-    st.video(output_video_path)
-
-    # تحميل الفيديو الناتج
-    with open(output_video_path, "rb") as f:
-        video_bytes = f.read()
-    st.download_button(
-        label="تحميل الفيديو الناتج",
-        data=video_bytes,
-        file_name="output_video.mp4",
-        mime="video/mp4"
-    )
-
-    # حذف الملفات المؤقتة
-    delete_temp_files(temp_video_path, output_video_path)
+if __name__ == "__main__":
+    main()
