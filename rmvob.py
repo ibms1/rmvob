@@ -5,14 +5,6 @@ from moviepy.editor import VideoFileClip
 import os
 from io import BytesIO
 
-# تحقق من طول الفيديو
-def check_video_duration(video_path):
-    clip = VideoFileClip(video_path)
-    duration = clip.duration
-    if duration > 30:  # إذا كان الفيديو أطول من 30 ثانية
-        return False
-    return True
-
 # تحويل الفيديو إلى إطارات
 def video_to_frames(video_path):
     cap = cv2.VideoCapture(video_path)
@@ -25,9 +17,9 @@ def video_to_frames(video_path):
     cap.release()
     return frames
 
-# معالجة الإطارات (هنا يمكنك استبدال هذا الجزء بنموذج الإزالة الفعلي)
+# معالجة الإطارات
 def process_frame(frame):
-    # مثال: تحويل الإطار إلى تدرج رمادي (يمكن استبدال هذا بالمعالجة الفعلية)
+    # مثال: تحويل الإطار إلى تدرج رمادي
     processed_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     return processed_frame
 
@@ -56,38 +48,31 @@ if uploaded_file is not None:
     with open(temp_video_path, "wb") as f:
         f.write(uploaded_file.read())
 
-    # التحقق من طول الفيديو
-    if not check_video_duration(temp_video_path):
-        st.error("الفيديو يجب ألا يتجاوز 30 ثانية!")
-        delete_temp_files(temp_video_path)  # حذف الفيديو المؤقت
-    else:
-        st.success("الفيديو مقبول!")
+    # تحويل الفيديو إلى إطارات
+    frames = video_to_frames(temp_video_path)
 
-        # تحويل الفيديو إلى إطارات
-        frames = video_to_frames(temp_video_path)
+    # معالجة الإطارات
+    processed_frames = []
+    for frame in frames:
+        processed_frame = process_frame(frame)
+        processed_frames.append(processed_frame)
 
-        # معالجة الإطارات
-        processed_frames = []
-        for frame in frames:
-            processed_frame = process_frame(frame)
-            processed_frames.append(processed_frame)
+    # تحويل الإطارات إلى فيديو
+    output_video_path = "output_video.mp4"
+    frames_to_video(processed_frames, output_video_path)
 
-        # تحويل الإطارات إلى فيديو
-        output_video_path = "output_video.mp4"
-        frames_to_video(processed_frames, output_video_path)
+    # عرض الفيديو الناتج
+    st.video(output_video_path)
 
-        # عرض الفيديو الناتج
-        st.video(output_video_path)
+    # تحميل الفيديو الناتج
+    with open(output_video_path, "rb") as f:
+        video_bytes = f.read()
+    st.download_button(
+        label="تحميل الفيديو الناتج",
+        data=video_bytes,
+        file_name="output_video.mp4",
+        mime="video/mp4"
+    )
 
-        # تحميل الفيديو الناتج
-        with open(output_video_path, "rb") as f:
-            video_bytes = f.read()
-        st.download_button(
-            label="تحميل الفيديو الناتج",
-            data=video_bytes,
-            file_name="output_video.mp4",
-            mime="video/mp4"
-        )
-
-        # حذف الملفات المؤقتة بعد الانتهاء
-        delete_temp_files(temp_video_path, output_video_path)
+    # حذف الملفات المؤقتة
+    delete_temp_files(temp_video_path, output_video_path)
