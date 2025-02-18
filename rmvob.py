@@ -4,9 +4,10 @@ import numpy as np
 from ultralytics import YOLO
 import tempfile
 import os
+import time
 
 # عنوان التطبيق
-st.title("تطبيق إزالة الأشياء من الفيديو (بديل)")
+st.title("تطبيق إزالة الأشياء من الفيديو")
 
 # تحميل النموذج
 @st.cache_resource
@@ -43,7 +44,8 @@ def inpaint_frame(frame, mask):
 # تحويل الإطارات إلى فيديو
 def frames_to_video(frames, output_path, fps):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (frames[0].shape[1], frames[0].shape[0]))
+    frame_height, frame_width, _ = frames[0].shape
+    out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
     for frame in frames:
         out.write(frame)
     out.release()
@@ -75,9 +77,22 @@ if uploaded_file:
         with st.spinner("جاري المعالجة..."):
             output_path = "output_video.mp4"
             process_video(video_path, output_path)
-            st.success("تمت المعالجة بنجاح!")
-            st.video(output_path)
-            os.remove(output_path)  # حذف الفيديو المعالج بعد التحميل
+            if os.path.exists(output_path):
+                st.success("تمت المعالجة بنجاح!")
+                time.sleep(5)  # انتظر 5 ثوانٍ قبل التحميل
+                st.video(output_path)
+                
+                # زر تحميل الفيديو
+                with open(output_path, "rb") as file:
+                    btn = st.download_button(
+                        label="تحميل الفيديو",
+                        data=file,
+                        file_name="output_video.mp4",
+                        mime="video/mp4"
+                    )
+                os.remove(output_path)  # حذف الفيديو المعالج بعد التحميل
+            else:
+                st.error("حدث خطأ أثناء إنشاء الفيديو.")
 
     # حذف الفيديو المؤقت
     os.remove(video_path)
