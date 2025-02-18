@@ -61,6 +61,7 @@ def main():
         # تهيئة المتغيرات للملفات المؤقتة
         temp_video_path = "temp_video.mp4"
         output_video_path = "output_video.mp4"
+        video_bytes = None  # متغير لتخزين بيانات الفيديو
         
         try:
             # عرض شريط التقدم
@@ -73,12 +74,10 @@ def main():
             
             status_text.text("جاري تحويل الفيديو إلى إطارات...")
             frames = video_to_frames(temp_video_path)
-            progress_bar.progress(0.3)  # تحديث القيمة إلى 0.3 بدلاً من 33
+            progress_bar.progress(0.3)
             
             if not frames:
                 st.error("لم يتم العثور على إطارات في الفيديو")
-                if os.path.exists(temp_video_path):
-                    os.remove(temp_video_path)
                 return
                 
             # معالجة الإطارات
@@ -90,39 +89,42 @@ def main():
                 processed_frame = process_frame(frame)
                 if processed_frame is not None:
                     processed_frames.append(processed_frame)
-                # تحديث شريط التقدم بنسبة مئوية
-                progress = 0.3 + (i / total_frames * 0.4)  # من 0.3 إلى 0.7
+                progress = 0.3 + (i / total_frames * 0.4)
                 progress_bar.progress(progress)
             
             # تحويل الإطارات إلى فيديو
             status_text.text("جاري إنشاء الفيديو النهائي...")
             
             if frames_to_video(processed_frames, output_video_path):
-                progress_bar.progress(1.0)  # اكتمال التقدم
-                status_text.text("تم معالجة الفيديو بنجاح!")
+                progress_bar.progress(0.9)
+                status_text.text("جاري تحضير الفيديو للعرض...")
                 
+                # قراءة الفيديو في الذاكرة قبل حذف الملف
                 try:
-                    # عرض الفيديو الناتج
                     with open(output_video_path, 'rb') as video_file:
                         video_bytes = video_file.read()
                     
+                    progress_bar.progress(1.0)
+                    status_text.text("تم معالجة الفيديو بنجاح!")
+                    
+                    # عرض الفيديو من الذاكرة
                     st.video(video_bytes)
                     
                     # زر التحميل
                     st.download_button(
                         label="تحميل الفيديو الناتج",
                         data=video_bytes,
-                        file_name="output_video.mp4",
+                        file_name="processed_video.mp4",
                         mime="video/mp4"
                     )
                 except Exception as e:
-                    st.error(f"خطأ في عرض الفيديو: {str(e)}")
+                    st.error(f"خطأ في تحضير الفيديو: {str(e)}")
             
         except Exception as e:
             st.error(f"حدث خطأ: {str(e)}")
         
         finally:
-            # تنظيف الملفات المؤقتة في كل الحالات
+            # تنظيف الملفات المؤقتة بعد التأكد من قراءة الفيديو
             for file_path in [temp_video_path, output_video_path]:
                 if os.path.exists(file_path):
                     try:
