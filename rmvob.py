@@ -2,22 +2,18 @@ import streamlit as st
 import cv2
 import numpy as np
 from ultralytics import YOLO
-from diffusers import StableDiffusionInpaintPipeline
-from PIL import Image
 import tempfile
 import os
 
 # عنوان التطبيق
-st.title("تطبيق إزالة الأشياء من الفيديو")
+st.title("تطبيق إزالة الأشياء من الفيديو (بديل)")
 
-# تحميل النماذج
+# تحميل النموذج
 @st.cache_resource
-def load_models():
-    yolo_model = YOLO('yolov8n.pt')
-    inpaint_pipeline = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
-    return yolo_model, inpaint_pipeline
+def load_model():
+    return YOLO('yolov8n.pt')
 
-yolo_model, inpaint_pipeline = load_models()
+yolo_model = load_model()
 
 # تحويل الفيديو إلى إطارات
 def video_to_frames(video_path):
@@ -40,12 +36,9 @@ def generate_mask(frame, results):
             cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
     return mask
 
-# التعبئة (Inpainting) باستخدام Stable Diffusion
+# التعبئة (Inpainting) باستخدام OpenCV
 def inpaint_frame(frame, mask):
-    image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    mask = Image.fromarray(mask)
-    result = inpaint_pipeline(prompt="fill the missing background naturally", image=image, mask_image=mask).images[0]
-    return cv2.cvtColor(np.array(result), cv2.COLOR_RGB2BGR)
+    return cv2.inpaint(frame, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
 
 # تحويل الإطارات إلى فيديو
 def frames_to_video(frames, output_path, fps):
