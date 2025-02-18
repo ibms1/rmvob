@@ -1,0 +1,7 @@
+ultralytics
+opencv-python-headless
+diffusers
+torch
+torchvision
+ffmpeg-python
+streamlit
