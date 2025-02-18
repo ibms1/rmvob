@@ -1,8 +1,13 @@
+# app.py
 import streamlit as st
-import cv2
 import numpy as np
 import os
 from io import BytesIO
+try:
+    import cv2
+except ImportError:
+    st.error("يرجى تثبيت opencv-python-headless بدلاً من opencv-python")
+    st.stop()
 
 def video_to_frames(video_path):
     """تحويل الفيديو إلى إطارات"""
@@ -34,7 +39,7 @@ def frames_to_video(frames, output_path, fps=30):
     
     try:
         height, width = frames[0].shape
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')  # Using H.264 codec instead of mp4v
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=False)
         
         for frame in frames:
@@ -59,17 +64,7 @@ def delete_temp_files(*file_paths):
 def main():
     st.title("معالجة الفيديو")
     
-    # إضافة CSS لتحسين المظهر
-    st.markdown("""
-        <style>
-        .stButton>button {
-            width: 100%;
-            margin-top: 10px;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    uploaded_file = st.file_uploader("رفع فيديو (أقصى مدة 30 ثانية)", type=["mp4", "avi"])
+    uploaded_file = st.file_uploader("رفع فيديو (أقصى مدة 30 ثانية)", type=["mp4"])
     
     if uploaded_file is not None:
         try:
@@ -86,6 +81,10 @@ def main():
             frames = video_to_frames(temp_video_path)
             progress_bar.progress(33)
             
+            if not frames:
+                st.error("لم يتم العثور على إطارات في الفيديو")
+                return
+                
             # معالجة الإطارات
             status_text.text("جاري معالجة الإطارات...")
             processed_frames = []
@@ -100,16 +99,19 @@ def main():
             # تحويل الإطارات إلى فيديو
             status_text.text("جاري إنشاء الفيديو النهائي...")
             output_video_path = "output_video.mp4"
+            
             if frames_to_video(processed_frames, output_video_path):
                 progress_bar.progress(100)
                 status_text.text("تم معالجة الفيديو بنجاح!")
                 
                 # عرض الفيديو الناتج
-                st.video(output_video_path)
+                video_file = open(output_video_path, 'rb')
+                video_bytes = video_file.read()
+                video_file.close()
+                
+                st.video(video_bytes)
                 
                 # زر التحميل
-                with open(output_video_path, "rb") as f:
-                    video_bytes = f.read()
                 st.download_button(
                     label="تحميل الفيديو الناتج",
                     data=video_bytes,
